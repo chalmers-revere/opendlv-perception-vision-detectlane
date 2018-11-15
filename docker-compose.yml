@@ -1,0 +1,54 @@
+version: '2'
+
+services:
+    perception-vision-detectlane:
+        container_name: dev-camera-opencv
+        image: chalmers-revere/opendlv-perception-vision-detectlane-amd64:v0.0.1
+        depends_on:
+          - video-h264-decoder-amd64
+        network_mode: "host"
+        volumes:
+          - "/dev/shm:/dev/shm"
+          - /tmp/.X11-unix:/tmp/.X11-unix
+        environment: 
+          - DISPLAY=$DISPLAY
+        privileged: true
+        ulimits:
+          memlock:
+            soft: 4000000
+            hard: 4000000
+        command: "opendlv-perception-vision-detectlane --cid=253 \
+               --name=cam0 \
+               --width=640 \
+               --height=480 \
+               --bpp=24 \
+               --blurkernelsize=5 \
+               --adapthreshkernelsize=5 \
+               --adapthreshconst=15 \
+               --cannythreshold=125 \
+               --houghthreshold=50 \
+               --linediff=1.1 \
+               --onelinediff=5.0 \
+               --horisontallimit=12.0 \
+               --memthreshold=0.5 \
+               --lowerlanelimit=245 \
+               --upperlanelimit=325 \
+               --roix=20 \
+               --roiy=235 \
+               --roiwidth=600 \
+               --roiheight=200 \
+               --debug=1 \
+               --verbose"
+
+    video-h264-decoder-amd64:
+        container_name: video-h264-decoder-amd64
+        build:
+            context: https://github.com/chalmers-revere/opendlv-video-h264-decoder.git
+            dockerfile: Dockerfile.amd64
+        restart: on-failure
+        network_mode: "host"
+        ipc: "host"
+        volumes:
+        - /tmp:/tmp
+        entrypoint: ""
+        command: "opendlv-video-h264-decoder --cid=253 --name=cam0 --width=640 --height=480"
