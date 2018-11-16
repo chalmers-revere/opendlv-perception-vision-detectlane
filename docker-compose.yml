@@ -2,14 +2,14 @@ version: '2'
 
 services:
     perception-vision-detectlane:
-        container_name: dev-camera-opencv
+        container_name: perception-vision-detectlane
         image: chalmers-revere/opendlv-perception-vision-detectlane-amd64:v0.0.1
         depends_on:
           - video-h264-decoder-amd64
         network_mode: "host"
+        ipc: "host"
         volumes:
-          - "/dev/shm:/dev/shm"
-          - /tmp/.X11-unix:/tmp/.X11-unix
+          - /tmp:/tmp
         environment: 
           - DISPLAY=$DISPLAY
         privileged: true
@@ -22,15 +22,15 @@ services:
                --width=640 \
                --height=480 \
                --bpp=24 \
-               --blurkernelsize=5 \
+               --blurkernelsize=3 \
                --adapthreshkernelsize=5 \
                --adapthreshconst=15 \
                --cannythreshold=125 \
-               --houghthreshold=50 \
+               --houghthreshold=40 \
                --linediff=1.1 \
                --onelinediff=5.0 \
                --horisontallimit=12.0 \
-               --memthreshold=0.5 \
+               --memthreshold=0.3 \
                --lowerlanelimit=245 \
                --upperlanelimit=325 \
                --roix=20 \
@@ -52,3 +52,4 @@ services:
         - /tmp:/tmp
         entrypoint: ""
         command: "opendlv-video-h264-decoder --cid=253 --name=cam0 --width=640 --height=480"
+

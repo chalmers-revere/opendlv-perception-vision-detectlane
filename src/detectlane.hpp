@@ -68,7 +68,7 @@ class DetectLane {
   uint16_t m_blurKernelSize; 
   cv::Mat m_cannyImg;
   cv::Mat m_adapThreshImg;
-  std::deque<std::pair<cluon::data::TimeStamp, cv::Mat>> m_visualMemory;
+  cv::Mat m_visualMemory;
   uint8_t m_adapThreshKernelSize;
   uint8_t m_adapThreshConst;
   uint16_t m_cannyThreshold;
@@ -92,6 +92,7 @@ class DetectLane {
   std::mutex m_mtx;
   bool m_debug;
   Eigen::Matrix3d m_transformationMatrix;
+  cv::Point m_aimPoint;
 };
 
 

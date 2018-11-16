@@ -49,6 +49,7 @@ DetectLane::DetectLane() noexcept :
   , m_mtx()
   , m_debug(1) //1
   , m_transformationMatrix()
+  , m_aimPoint()
 {
 
   //m_roi={30,150,1000,50}; 
@@ -59,8 +60,8 @@ DetectLane::DetectLane() noexcept :
 
   //m_screenSize[0]=1280;
   //m_screenSize[1]=720;
-	  
-  m_transformationMatrix = ReadMatrix("logic-perception-detectlane.camera-pixel2world-matrix.csv",3,3);	
+    
+  m_transformationMatrix = ReadMatrix("logic-perception-detectlane.camera-pixel2world-matrix.csv",3,3); 
 }
 
 
@@ -70,9 +71,9 @@ DetectLane::~DetectLane()
 }
 
 void DetectLane::Datatrigger(cv::Mat image, uint32_t width, uint32_t height, uint16_t blurKernelSize, uint8_t adapThreshKernelSize,
-							 uint8_t adapThreshConst, uint16_t cannyThreshold, uint16_t houghThreshold, float lineDiff, float OneLineDiff,
-							 float HorisontalLimit, double memThreshold, double upperLaneLimit, double lowerLaneLimit, uint16_t roiX,
-							 uint16_t roiY, uint16_t roiWidth, uint16_t roiHeight, bool debug) {
+               uint8_t adapThreshConst, uint16_t cannyThreshold, uint16_t houghThreshold, float lineDiff, float OneLineDiff,
+               float HorisontalLimit, double memThreshold, double upperLaneLimit, double lowerLaneLimit, uint16_t roiX,
+               uint16_t roiY, uint16_t roiWidth, uint16_t roiHeight, bool debug) {
 
   m_screenSize[0]=width;
   m_screenSize[1]=height;
@@ -92,27 +93,28 @@ void DetectLane::Datatrigger(cv::Mat image, uint32_t width, uint32_t height, uin
   m_roi[2]=roiWidth;
   m_roi[3]=roiHeight;
   m_debug=debug;
-	
+  
   m_currentImg = image.clone();
   UpdateVisualMemory();
   UpdateVisualLines();
+  
   // Get parametric line representation
   std::vector<std::pair<cv::Vec2f, cv::Vec2f>> linesParam = GetParametricRepresentation(m_linesProcessed);
-	
+  
   // Update points on lines
   UpdatePointsOnLines(linesParam);
-	
+  
   // Pair up lines to form a surface
   m_currentLaneLineIds.clear();
   m_laneLineIds.clear();
   m_laneLineIds = GetLanes();
   m_currentLaneLineIds = GetCurrentLane();
-	
+  
   if (m_debug) {
     DrawWindows();
   }
-	//TODO: Update middel lane calculation: opendlv::model::Cartesian3> -> EIGEN.Vector
-/*	    if (edges.size() >= 4) {
+  //TODO: Update middel lane calculation: opendlv::model::Cartesian3> -> EIGEN.Vector
+/*      if (edges.size() >= 4) {
       double x1 = edges[0].getX();
       double y1 = edges[0].getY();
       double x2 = edges[2].getX();
@@ -126,7 +128,7 @@ void DetectLane::Datatrigger(cv::Mat image, uint32_t width, uint32_t height, uin
       std::cout << "Aim point: " << xAim << ":" << yAim << std::endl;
       std::cout << "Aim angle: " << aimAngle << std::endl;
 
-      odcore::data::TimeStamp now;
+      auto now = cluon::time::now();
       opendlv::model::Direction direction(0.0f, 0.0f);
       opendlv::model::Direction desiredDirection(static_cast<float>(aimAngle), 0.0f);
       opendlv::perception::StimulusDirectionOfMovement stimulus(now, desiredDirection, direction);
@@ -134,16 +136,16 @@ void DetectLane::Datatrigger(cv::Mat image, uint32_t width, uint32_t height, uin
       odcore::data::Container c(stimulus);
       getConference().send(c);
     }
-	*/
+  */
   for (auto it = m_currentLaneLineIds.begin(); it != m_currentLaneLineIds.end(); it++) {
-	std::cout << (m_xWorldP[*it][0], m_yWorldP[*it][0]) << std::endl;
-	std::cout << (m_xWorldP[*it][1], m_yWorldP[*it][1]) << std::endl;
+    std::cout << (m_xWorldP[*it][0], m_yWorldP[*it][0]) << std::endl;
+    std::cout << (m_xWorldP[*it][1], m_yWorldP[*it][1]) << std::endl;
   }
 }
   
 void DetectLane::UpdateVisualMemory() {
-  cluon::data::TimeStamp  now;
   cv::Rect rectROI(m_roi[0], m_roi[1], m_roi[2], m_roi[3]);
+
   cv::Mat visualImpression;
   try {
     std::lock_guard<std::mutex> l(m_mtx);
@@ -152,36 +154,99 @@ void DetectLane::UpdateVisualMemory() {
     std::cerr << "Error cropping the image due to dimension size. " << std::endl;
     return;
   }
-  // Reduce the noise in image
-  cv::medianBlur(visualImpression, visualImpression, m_blurKernelSize);
-  
-  m_visualMemory.push_back(std::make_pair(now, visualImpression));
-
+   
+  if  (!m_visualMemory.empty()) {
+    cv::addWeighted(m_visualMemory, 1.0 - m_memThreshold, visualImpression, m_memThreshold, 0.0, m_visualMemory);
+  } else {
+     m_visualMemory = visualImpression;
+  }
 }
 
 void DetectLane::UpdateVisualLines()
 {
+  cv::Mat kernel = (cv::Mat_<float>(3, 3) << -1,-1,-1,-1,9,-1,-1,-1,-1);
+  cv::Mat sharpMemory;
+  cv::filter2D(m_visualMemory, sharpMemory, -1, kernel);
+
   // Canny transformation 
-  cv::Canny(m_visualMemory.back().second, m_cannyImg, m_cannyThreshold, m_cannyThreshold*3, 3);
+  cv::Canny(sharpMemory, m_cannyImg, m_cannyThreshold, m_cannyThreshold*3, 3);
+  cv::medianBlur(m_cannyImg, m_cannyImg, m_blurKernelSize);
   cv::Sobel(m_cannyImg, m_cannyImg, m_cannyImg.depth(), 1, 0, 3, 1, 0, cv::BORDER_DEFAULT);
+  cv::bitwise_not(m_cannyImg, m_cannyImg);
+  cv::erode(m_cannyImg, m_cannyImg, cv::Mat(), cv::Point(-1, -1), 15, 1, 1);
+
+  std::vector<std::vector<cv::Point>> contours;
+  std::vector<cv::Vec4i> hierarchy;
+  cv::findContours(m_cannyImg, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
+
+  for (uint32_t i = 0; i < contours.size(); i++) {
+    cv::Point aimPointProposal(0, 180);
+    bool isClose = false;
+    bool toLeft = false;
+    bool toRight = false;
+    for (auto p : contours[i]) {
+      if (p.y < aimPointProposal.y) {
+        aimPointProposal = p;
+      }
+      if (p.y > 180) {
+        isClose = true;
+      }
+      if (p.x < 200) {
+        toLeft = true;
+      }
+      if (p.x > 400) {
+        toRight = true;
+      }
+    }
+    if (isClose && toLeft && toRight) {
+
+      if (m_aimPoint.x == 0 && m_aimPoint.y == 0) {
+        m_aimPoint = aimPointProposal;
+      }
+
+      uint32_t deltaLimit = 5;
+      if (std::abs(m_aimPoint.x - aimPointProposal.x) < deltaLimit) {
+        m_aimPoint.x = aimPointProposal.x;
+      } else {
+        if (m_aimPoint.x < aimPointProposal.x) {
+          m_aimPoint.x += deltaLimit;
+        } else {
+          m_aimPoint.x -= deltaLimit;
+        }
+      }
+      
+      if (std::abs(m_aimPoint.y - aimPointProposal.y) < deltaLimit) {
+        m_aimPoint.y = aimPointProposal.y;
+      } else {
+        if (m_aimPoint.y < aimPointProposal.y) {
+          m_aimPoint.y += deltaLimit;
+        } else {
+          m_aimPoint.y -= deltaLimit;
+        }
+      }
+
+
+      //cv::drawContours(m_currentImg, contours, i, cv::Scalar(200, 0, 0), 2, 8, hierarchy, 0, cv::Point());
+      cv::Point proposalDisp(aimPointProposal.x + 20, aimPointProposal.y + 235);
+      cv::circle(m_currentImg, proposalDisp, 10, cv::Scalar(255, 0, 0), 3, 8);
+    }
+  }
+
+  cv::Point aimPointDisp(m_aimPoint.x + 20, m_aimPoint.y + 235);
+  cv::circle(m_currentImg, aimPointDisp, 10, cv::Scalar(0, 255, 0), 3, 8);
 
   // Adaptive Threshold
-  cv::cvtColor(m_visualMemory.back().second, m_adapThreshImg, CV_RGB2GRAY);
-  cv::adaptiveThreshold(m_adapThreshImg,m_adapThreshImg,255,cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY_INV, m_adapThreshKernelSize, m_adapThreshConst);
+  cv::cvtColor(sharpMemory, m_adapThreshImg, CV_RGB2GRAY);
+  cv::adaptiveThreshold(m_adapThreshImg, m_adapThreshImg, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY_INV, m_adapThreshKernelSize, m_adapThreshConst);
+  cv::medianBlur(m_adapThreshImg, m_adapThreshImg, m_blurKernelSize);
   cv::Sobel(m_adapThreshImg, m_adapThreshImg, m_adapThreshImg.depth(), 1, 0, 3, 1, 0, cv::BORDER_DEFAULT); 
+  cv::bitwise_not(m_adapThreshImg, m_adapThreshImg);
+  cv::erode(m_adapThreshImg, m_adapThreshImg, cv::Mat(), cv::Point(-1, -1), 10, 1, 1);
+  
 
-  // Vector holder for each line (rho,theta)
-  std::vector<cv::Vec2f> detectedLinesCanny;
-  std::vector<cv::Vec2f> detectedLinesAdapThresh;
 
-  // Hough Transform 
-  // OpenCV function that uses the Hough transform and finds the "strongest" lines in the transformation    
-  cv::HoughLines(m_cannyImg, detectedLinesCanny, 1, M_PI/180.0, m_houghThreshold);
-  cv::HoughLines(m_adapThreshImg, detectedLinesAdapThresh, 1, M_PI/180.0, m_houghThreshold);
-  m_linesRaw = detectedLinesCanny;
-  m_linesRaw.insert(m_linesRaw.end(), detectedLinesAdapThresh.begin(), detectedLinesAdapThresh.end());
-  double const DIST_RADIUS = 100.0;
-  m_linesProcessed = GetGrouping(m_linesRaw, DIST_RADIUS);
+
+
 }
 
 // Grouping or lumping close lying lines into groups
@@ -224,6 +289,7 @@ std::vector<cv::Vec2f> DetectLane::GetGrouping(std::vector<cv::Vec2f> a_lines, d
   }
   return groupMean;
 }
+
 // Converting to the conventional line representation
 std::vector<std::pair<cv::Vec2f, cv::Vec2f>> DetectLane::GetParametricRepresentation(
     std::vector<cv::Vec2f> a_groups)
@@ -323,6 +389,7 @@ Eigen::MatrixXd DetectLane::ReadMatrix(std::string const a_fileName
   file.close();
   return matrix;
 }
+
 Eigen::Vector3d DetectLane::TransformPointToGlobalFrame(Eigen::Vector3d a_point) const
 {
   a_point = m_transformationMatrix * a_point;
@@ -390,12 +457,12 @@ void DetectLane::DrawWindows()
 
     float a = (float)cos(theta), b = (float)sin(theta);
     float x0 = (a*rho), y0 = (b*rho);
-	int tempX = (int)((float) (m_roi[0] + x0) + 2000.0f*(-b));
-	int tempY = (int)((float) (m_roi[1] + y0) + 2000.0f*(a));
-	cv::Point pt1(tempX,tempY);
+    int tempX = (int)((float) (m_roi[0] + x0) + 2000.0f*(-b));
+    int tempY = (int)((float) (m_roi[1] + y0) + 2000.0f*(a));
+    cv::Point pt1(tempX,tempY);
     tempX = (int)((float) (m_roi[0] + x0) - 2000.0f*(-b));
-	tempY = (int)((float) (m_roi[1] + y0) - 2000.0f*(a));
-	cv::Point pt2(tempX, tempY);
+    tempY = (int)((float) (m_roi[1] + y0) - 2000.0f*(a));
+    cv::Point pt2(tempX, tempY);
 
     cv::line(m_currentImg, pt1, pt2, cv::Scalar(0,0,255), 2, 1 );
   }
@@ -403,15 +470,16 @@ void DetectLane::DrawWindows()
   // Printing out screen points
   for (uint8_t i = 0; i < m_laneLineIds.size(); i++) {
     for (uint8_t k = 0; k < 2; k++) {
-	  cv::Point point((uint)m_xScreenP[m_laneLineIds[i]][k], (uint)m_yScreenP[m_laneLineIds[i]][k]);
-	  // int cv_point_int = cv::Point(m_xScreenP[m_laneLineIds[i]][k], m_yScreenP[m_laneLineIds[i]][k]);
+      cv::Point point((uint)m_xScreenP[m_laneLineIds[i]][k], (uint)m_yScreenP[m_laneLineIds[i]][k]);
+      // int cv_point_int = cv::Point(m_xScreenP[m_laneLineIds[i]][k], m_yScreenP[m_laneLineIds[i]][k]);
       cv::circle(m_currentImg, point, 10, cv::Scalar(0,255,0), 3, 8);
     }
   }
+
   // Printing out current lane points
   for (uint8_t i = 0; i < m_currentLaneLineIds.size(); i++) {
     for (uint8_t k = 0; k < 2; k++) {
-	  cv::Point point((uint)m_xScreenP[m_currentLaneLineIds[i]][k], (uint)m_yScreenP[m_currentLaneLineIds[i]][k]);
+      cv::Point point((uint)m_xScreenP[m_currentLaneLineIds[i]][k], (uint)m_yScreenP[m_currentLaneLineIds[i]][k]);
       cv::circle(m_currentImg, point, 10, cv::Scalar(0,0,255), 3, 8);
     }
   }
@@ -422,9 +490,9 @@ void DetectLane::DrawWindows()
   
   // Add the roi to the image
   cv::line(m_currentImg, cv::Point(m_roi[0],0), cv::Point(m_roi[0],m_screenSize[1]), cv::Scalar(255,255,0), 3, 1 );
-  cv::line(m_currentImg, cv::Point(m_roi[0]+m_roi[2],0), cv::Point(m_roi[0]+m_roi[2],m_screenSize[1]), cv::Scalar(255,255,0), 3, 1 );
+  cv::line(m_currentImg, cv::Point(m_roi[0]+m_roi[2],0), cv::Point(m_roi[0]+m_roi[2],m_screenSize[1]), cv::Scalar(255,255,0), 3, 1);
   cv::line(m_currentImg, cv::Point(0,m_roi[1]), cv::Point(m_screenSize[0],m_roi[1]), cv::Scalar(255,255,0), 3, 1 );
-  cv::line(m_currentImg, cv::Point(0,m_roi[1]+m_roi[3]), cv::Point(m_screenSize[0],m_roi[1]+m_roi[3]), cv::Scalar(255,255,0), 3, 1 ); 
+  cv::line(m_currentImg, cv::Point(0,m_roi[1]+m_roi[3]), cv::Point(m_screenSize[0],m_roi[1]+m_roi[3]), cv::Scalar(255,255,0), 3, 1); 
 
 
   const int32_t windowWidth = 640/2;
@@ -433,7 +501,7 @@ void DetectLane::DrawWindows()
   // Set number of windows to display
   cv::Mat display[4];
   
-  cv::resize(m_visualMemory.back().second, display[0], cv::Size(windowWidth,windowHeight), 0, 0, cv::INTER_AREA);
+  cv::resize(m_visualMemory, display[0], cv::Size(windowWidth,windowHeight), 0, 0, cv::INTER_AREA);
   cv::imshow("Memory image", display[0]);
 
   cv::resize(m_adapThreshImg, display[1], cv::Size(windowWidth,windowHeight), 0, 0, cv::INTER_AREA);

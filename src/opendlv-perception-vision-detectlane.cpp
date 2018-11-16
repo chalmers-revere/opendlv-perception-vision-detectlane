@@ -73,12 +73,14 @@ int32_t main(int32_t argc, char **argv) {
         const uint8_t adapThreshConst{static_cast<uint8_t>(std::stoi(commandlineArguments["adapthreshconst"]))};
         const uint16_t cannyThreshold{static_cast<uint16_t>(std::stoi(commandlineArguments["cannythreshold"]))};
         const uint16_t houghThreshold{static_cast<uint16_t>(std::stoi(commandlineArguments["houghthreshold"]))};
-        const float lineDiff{static_cast<float>(std::stoi(commandlineArguments["linediff"]))};
-        const float OneLineDiff{static_cast<float>(std::stoi(commandlineArguments["onelinediff"]))};
-        const float HorisontalLimit{static_cast<float>(std::stoi(commandlineArguments["horisontallimit"]))};
-        const double memThreshold{static_cast<double>(std::stoi(commandlineArguments["memthreshold"]))};
-        const double lowerLaneLimit{static_cast<double>(std::stoi(commandlineArguments["lowerlanelimit"]))};
-        const double upperLaneLimit{static_cast<double>(std::stoi(commandlineArguments["upperlanelimit"]))};
+        
+        const float lineDiff{static_cast<float>(std::stof(commandlineArguments["linediff"]))};
+        const float OneLineDiff{static_cast<float>(std::stof(commandlineArguments["onelinediff"]))};
+        const float HorisontalLimit{static_cast<float>(std::stof(commandlineArguments["horisontallimit"]))};
+        const double memThreshold{static_cast<double>(std::stof(commandlineArguments["memthreshold"]))};
+        const double lowerLaneLimit{static_cast<double>(std::stof(commandlineArguments["lowerlanelimit"]))};
+        const double upperLaneLimit{static_cast<double>(std::stof(commandlineArguments["upperlanelimit"]))};
+
         const uint16_t roiX{static_cast<uint16_t>(std::stoi(commandlineArguments["roix"]))};
         const uint16_t roiY{static_cast<uint16_t>(std::stoi(commandlineArguments["roiy"]))};
         const uint16_t roiWidth{static_cast<uint16_t>(std::stoi(commandlineArguments["roiwidth"]))};
