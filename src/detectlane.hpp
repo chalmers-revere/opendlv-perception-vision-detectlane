@@ -93,6 +93,11 @@ class DetectLane {
   bool m_debug;
   Eigen::Matrix3d m_transformationMatrix;
   cv::Point m_aimPoint;
+  float m_oldPixelDistance{0};
+  cluon::data::TimeStamp m_before{};
+
+ public:
+  std::deque<float> m_delayedSteerings;
 };
 
 

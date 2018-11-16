@@ -50,6 +50,9 @@ DetectLane::DetectLane() noexcept :
   , m_debug(1) //1
   , m_transformationMatrix()
   , m_aimPoint()
+  , m_oldPixelDistance(0)
+  , m_before()
+  , m_delayedSteerings()
 {
 
   //m_roi={30,150,1000,50}; 
@@ -62,6 +65,8 @@ DetectLane::DetectLane() noexcept :
   //m_screenSize[1]=720;
     
   m_transformationMatrix = ReadMatrix("logic-perception-detectlane.camera-pixel2world-matrix.csv",3,3); 
+
+  m_before = cluon::time::now();
 }
 
 
@@ -234,6 +239,24 @@ void DetectLane::UpdateVisualLines()
 
   cv::Point aimPointDisp(m_aimPoint.x + 20, m_aimPoint.y + 235);
   cv::circle(m_currentImg, aimPointDisp, 10, cv::Scalar(0, 255, 0), 3, 8);
+
+
+  float K_P{.25f};
+  float K_D{.01f};
+
+  cluon::data::TimeStamp after{cluon::time::now()};
+  float pixelDistance = m_cannyImg.size().width/2.0f - m_aimPoint.x;
+  float pixelRate = pixelDistance - m_oldPixelDistance;
+  pixelRate /= cluon::time::deltaInMicroseconds(after, m_before)/(1000.0f*1000.0f);
+
+  // Save for next iteration.
+  m_oldPixelDistance = pixelDistance;
+  m_before = after;
+
+  float steeringWheelAngle = K_P * pixelDistance + K_D * pixelRate;
+  steeringWheelAngle = (steeringWheelAngle/180.0f) * static_cast<float>(M_PI);
+
+  m_delayedSteerings.push_front(steeringWheelAngle);
 
   // Adaptive Threshold
   cv::cvtColor(sharpMemory, m_adapThreshImg, CV_RGB2GRAY);

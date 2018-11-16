@@ -136,6 +136,17 @@ int32_t main(int32_t argc, char **argv) {
                     detectlane.Datatrigger(cv_image_colorflip, WIDTH, HEIGHT, blurKernelSize, adapThreshKernelSize, adapThreshConst,
                                            cannyThreshold, houghThreshold, lineDiff, OneLineDiff, HorisontalLimit, memThreshold,
                                            lowerLaneLimit, upperLaneLimit, roiX, roiY, roiWidth, roiHeight, debug);
+
+
+                    uint32_t DELAY{5};
+                    if (detectlane.m_delayedSteerings.size() > DELAY) {
+                      opendlv::proxy::ActuationRequest ar;
+                      ar.acceleration(0).steering(detectlane.m_delayedSteerings.back()).isValid(true);
+                      od4.send(ar);
+
+                      detectlane.m_delayedSteerings.pop_back();
+                    }
+
                 }
                 cvReleaseImageHeader(&image);
             }
